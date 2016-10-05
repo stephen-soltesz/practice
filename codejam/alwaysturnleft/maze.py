@@ -38,7 +38,7 @@ def main():
             for x in range(X):
                 maze.append([0 for y in range(Y)])
 
-            entrance = (X - 1 - max_x, 0)
+            entrance = (abs(min_x), 0)
             exit = (abs(min_x - last_x), abs(last_y))
 
             o = walkmaze(maze, forward, entrance)
@@ -78,13 +78,11 @@ def walkmaze(m, forward, enter, initial_orientation=2):
     for move in list(forward[1:-1]):
 
         if move == 'W':
-            if x >= 0 and y >= 0 and x < len(m) and y < len(m[0]):
-                m[x][y] = mark_wall_clear(m[x][y], compass[direction])
-
+            # Mark the forward wall of the current position clear.
+            m[x][y] = mark_wall_clear(m[x][y], compass[direction])
             x, y = update_position(x, y, compass[direction])
-
-            if x >= 0 and y >= 0 and x < len(m) and y < len(m[0]):
-                m[x][y] = mark_wall_clear(m[x][y], compass[(direction + 2) % len(compass)])
+            # Mark the reverse wall of the new position clear.
+            m[x][y] = mark_wall_clear(m[x][y], compass[(direction + 2) % len(compass)])
 
         if move == 'L':
             direction -= 1
