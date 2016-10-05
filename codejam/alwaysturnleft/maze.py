@@ -1,47 +1,9 @@
 #!/usr/bin/python
 
-
 import pprint
+import string
 import sys
 
-def main():
-    with open(sys.argv[1]) as f:
-        N = f.readline().strip()
-        for i, line in enumerate(f.readlines()):
-            forward, reverse = line.strip().split()
-            #print 'Case #%d:' % (i + 1)
-            ((c, r), enter, exit) = dimensions(forward)
-            print (c, r), enter, exit
-            m = []
-            for x in range(c):
-                m.append([0xf for y in range(r)])
-
-            pprint.pprint(m)
-            o = walkmaze(m, forward, enter)
-            walkmaze(m, reverse, exit, initial_orientation=o)
-            print 'Case #%d:' % (i + 1)
-            for y in range(r):
-                for x in range(c):
-                    print '%x' % (0xf & (~ m[x][y])),
-                print ''
-
-            #sys.exit(1)
-
-            #o, maze = walk2(forward)
-            #print forward
-            #print ' '.join(map(hex, maze))
-
-            #_, maze = walk2(reverse, o)
-            #print reverse
-            #print ' '.join(map(hex, maze))
-
-            #o, maze = walk(forward)
-            #print forward
-            #print ' '.join(maze)
-            #_, maze = walk(reverse, o)
-            #print reverse
-            #print ' '.join(maze)
-            #sys.exit(1)
 
 N = 0x1
 E = 0x8
@@ -49,83 +11,80 @@ S = 0x2
 W = 0x4
 
 
-def clear(w, d):
-    return w & (~ d)
+def main():
+    with open(sys.argv[1]) as f:
+        N = f.readline().strip()
+        for i, line in enumerate(f.readlines()):
+            forward, reverse = line.strip().split()
 
+            # Check dimensions forward.
+            _, _, min_x, max_x, min_y, max_y = dimensions(forward)
 
-class Position(object):
+            # Use the 'reverse' path to walk through the maze again from the
+            # entrance, but using an always-turn-right 'forward' path.
+            # Change all 'lefts to rights, and rights to lefts, and reverse
+            # the order of the sequence.
+            backward = ''.join(reversed(reverse.translate(string.maketrans('LR', 'RL'))))
 
-    def __init__(self, n, s, w, e):
-        self.ns = M(n, s)
-        self.we = M(w, e)
+            # Check dimensions forward and the 'reversed' forward path.
+            last_x, last_y, min_x, max_x, min_y, max_y = dimensions(backward, min_x, max_x, min_y, max_y)
 
-    def update(self, d):
-        self.ns.update(d)
-        self.we.update(d)
+            # Calculate dimensions of maze.
+            X = max_x - min_x + 1
+            Y = max_y - min_y + 1
 
-    def cols(self):
-        return self.we.size()
+            # Create an X by Y array.
+            maze = []
+            for x in range(X):
+                maze.append([0 for y in range(Y)])
 
-    def rows(self):
-        return self.ns.size()
+            entrance = (X - 1 - max_x, 0)
+            exit = (abs(min_x - last_x), abs(last_y))
 
-    def entrance(self):
-        return (abs(self.we.c) - 1, 0)
+            o = walkmaze(maze, forward, entrance)
+            walkmaze(maze, reverse, exit, initial_orientation=o)
 
-    def exit(self):
-        return (0, abs(self.ns.c) - 1)
+            print 'Case #%d:' % (i + 1)
+            for y in range(Y):
+                print ''.join(['%x' % maze[x][y] for x in range(X)])
 
-
-class M(object):
-
-    def __init__(self, pos, neg):
-        self.p = pos
-        self.n = neg
-        self.c = 0
-        self.max = 0
-        self.min = 0
-
-    def update(self, d):
-        if d == self.n:
-            self.c -= 1
-        if d == self.p:
-            self.c += 1
-        self.max = max(self.max, self.c)
-        self.min = min(self.min, self.c)
-
-    def size(self):
-        return self.max - self.min
+            
+def mark_wall_clear(w, d):
+    return w | d
 
 
 def update_position(x, y, d):
     if d == N:
         y = y - 1
-    if d == S:
+    elif d == S:
         y = y + 1
-    if d == W:
+    elif d == W:
         x = x - 1
-    if d == E:
+    elif d == E:
         x = x + 1
     return x, y
 
 
 def walkmaze(m, forward, enter, initial_orientation=2):
     compass = [N, E, S, W]
+
     direction = initial_orientation
-    first_pass = True
+
     x, y = enter
-    # print forward
-    for move in list(forward):
-        # print move, x, y
+
+    # Clear the door at the entrance.
+    m[x][y] = mark_wall_clear(m[x][y], compass[(direction + 2) % len(compass)])
+
+    for move in list(forward[1:-1]):
+
         if move == 'W':
-            if not first_pass:
-                if x >= 0 and y >= 0:
-                    m[x][y] = clear(m[x][y], compass[direction])
-                x, y = update_position(x, y, compass[direction])
-            else:
-                first_pass = False
-            if x >= 0 and y >= 0:
-                m[x][y] = clear(m[x][y], compass[(direction + 2) % len(compass)])
+            if x >= 0 and y >= 0 and x < len(m) and y < len(m[0]):
+                m[x][y] = mark_wall_clear(m[x][y], compass[direction])
+
+            x, y = update_position(x, y, compass[direction])
+
+            if x >= 0 and y >= 0 and x < len(m) and y < len(m[0]):
+                m[x][y] = mark_wall_clear(m[x][y], compass[(direction + 2) % len(compass)])
 
         if move == 'L':
             direction -= 1
@@ -137,86 +96,44 @@ def walkmaze(m, forward, enter, initial_orientation=2):
             if direction >= len(compass):
                 direction = 0
 
-    # print "%s %s: %s %s" % (p.rows(), p.cols(), p.entrance(), p.exit())
     return (direction + 2 ) % len(compass)
 
 
-def walk2(forward, initial_orientation=2):
+def dimensions(path, min_x=0, max_x=0, min_y=0, max_y=0):
+    # A clockwise representation of compass directions.
     compass = [N, E, S, W]
-    direction = initial_orientation
-    walls = []
-    p = Position(N, S, W, E)
-    for move in list(forward):
-        w = 0xf
-        if move == 'W':
-            print direction, compass[direction]
-            w = clear(w, compass[direction])
-            w = clear(w, compass[(direction + 2) % len(compass)])
-            p.update(compass[direction])
+    # Entrance is always on the north side, so initial orientation is 'S'.
+    direction = 2
 
-            walls.append(w)
+    # Assume the initial start is 0, 0, but the position updates are
+    # unconstrained, so we may get negative positions.
+    x, y = 0, 0
+
+    for move in list(path[1:-1]):
+        if move == 'W':
+            # Orientation does not change, but position does.
+            x, y = update_position(x, y, compass[direction])
+
+            min_x = x if x < min_x else min_x
+            max_x = x if x > max_x else max_x
+            
+            min_y = y if y < min_y else min_y
+            max_y = y if y > max_y else max_y
+
         if move == 'L':
+            # Rotate counter-clockwise one position.
             direction -= 1
             if direction < 0:
                 direction = len(compass) - 1
+
         if move == 'R':
+            # Rotate clockwise one position.
             direction += 1
             if direction >= len(compass):
                 direction = 0
 
-    print "%s %s: %s %s" % (p.rows(), p.cols(), p.entrance(), p.exit())
-    return direction, walls 
+    return x, y, min_x, max_x, min_y, max_y
 
 
-def walk(path, initial_orientation=2):
-    compass = ['N', 'E', 'S', 'W']
-    o = initial_orientation
-    r, c = 0, 0
-    directions = []
-    p = Position('N', 'S', 'W', 'E')
-    for move in list(path):
-        if move == 'W':
-            # nothing changes.
-            print o, compass[o]
-            directions.append(compass[o])
-            p.update(compass[o])
-
-        if move == 'L':
-            o -= 1
-            if o < 0:
-                o = len(compass) - 1
-        if move == 'R':
-            o += 1
-            if o >= len(compass):
-                o = 0
-
-    print "%s %s: %s %s" % ((p.rows(), p.cols()), p.entrance(), p.exit())
-    return ((p.rows(), p.cols()), p.entrance(), p.exit())
-    # return (o + 2) % len(compass), directions
-
-
-def dimensions(path, initial_orientation=2):
-    compass = ['N', 'E', 'S', 'W']
-    o = initial_orientation
-    r, c = 0, 0
-    directions = []
-    p = Position('N', 'S', 'W', 'E')
-    for move in list(path):
-        if move == 'W':
-            # nothing changes.
-            directions.append(compass[o])
-            p.update(compass[o])
-
-        if move == 'L':
-            o -= 1
-            if o < 0:
-                o = len(compass) - 1
-        if move == 'R':
-            o += 1
-            if o >= len(compass):
-                o = 0
-
-    return ((p.cols(), p.rows()), p.entrance(), p.exit())
-
-
-main()
+if __name__ == '__main__':
+    main()
